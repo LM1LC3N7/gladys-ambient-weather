@@ -11,9 +11,11 @@
 
 ## To confirm
 
-- [ ] The realtime server speaks Engine.IO v4 (`EIO=4`, as python-socketio 5
-      in aioambient does): never tried with a real Application key. If it
-      only speaks v3, the client must ping itself.
+- [ ] Which Engine.IO version the realtime server speaks: v4 first (as
+      python-socketio 5 in aioambient), v3 after three failed handshakes (as
+      the official npm client); never tried with a real Application key.
+- [ ] The answer of `GET lightning.ambientweather.net/devices/<mac>` (one
+      station, `{ data }` or a list?): all three shapes are read; not tried.
 - [ ] The answer of the REST API and of the realtime API to refused keys (401
       or 403? an `invalidApiKeys` list in `subscribed`?): handled both ways.
 - [ ] The battery fields: 1 = OK, 0 = low for `battout`, `battin`, `battN`,
@@ -22,8 +24,8 @@
       checked once on 2026-10-16 (200, `{ data: [...] }`, no account, about
       10 KB per station). Undocumented: watch for changes, and whether it
       accepts `$select` to make the answer lighter.
-- [ ] Gladys shows `angle-sensor` (wind direction) and the precipitation
-      totals in `mm`/`inch` well on the dashboard.
+- [ ] Gladys shows `angle-sensor` (wind direction), the precipitation totals
+      in `mm` and the 24-hour rain in `millimeter-per-day` well.
 
 ## Decisions
 
@@ -33,24 +35,39 @@
 - **One device per sensor group** (outdoor, indoor, extra channels, soil
   probes), so each can sit in its own room; external ids from the MAC
   address and the Ambient field name, never a label.
-- **No runtime dependency**: the realtime client is a small Socket.IO v5
-  client over Node's built-in WebSocket rather than socket.io-client.
+- **No runtime dependency**: the realtime client is a small Socket.IO client
+  (v5 and v2) over Node's built-in WebSocket rather than socket.io-client.
 - **aioambient (MIT) as the reference**, not copied: Python, so the same
   endpoints and protocol are re-implemented in JavaScript and credited.
 - **Feels-like and dew point left out**: Ambient computes them, and as
   `temperature-sensor` features they would skew the room temperature of
   Gladys.
-- **Units Gladys lacks**: pressure always in hPa (no inHg), rain rate always
-  in mm/h (no in/h), solar radiation in lux (no W/m², factor 1/0.0079 as Home
-  Assistant).
+- **Units (review decision)**: the unit system only changes the
+  temperatures (°C or °F). Wind is always in km/h, rain totals in mm, the
+  rain rate in mm/h, `24hourrainin` in mm per day (a daily amount), pressure
+  in hPa (no inHg in Gladys, no in/h either): one unit per quantity keeps
+  charts and scene thresholds consistent. Solar radiation in lux (no W/m²,
+  factor 1/0.0079 ≈ 126.6 as Home Assistant). Humidity and soil moisture are
+  decimal sensors.
 - **States in the created unit**: a feature keeps the unit it was created
   with; switching the unit system never sends °C into a °F feature.
 - **Public stations off by default**: turning them on sends the houses'
   location (rounded to 2 decimals) to Ambient; outdoor values only, no
   battery, never the owner's indoor data.
 - **Pacing**: one pacer for the REST host (1.1 s between calls, the 1
-  request/s per API key limit), one for the public host; 429 surfaces as a
-  status and the next read retries.
+  request/s per API key limit), one for the public host. A 429 waits its
+  Retry-After (1 minute without it); refused keys are read again every 30
+  minutes until the configuration changes (the test button may force one).
+- **Public stations**: 100 per box; the created ones the box misses are read
+  by MAC (`/devices/<mac>`, aioambient's `get_device_details`), one at a
+  time.
+- **Realtime robustness**: 30 s handshake timeout, Engine.IO v3 fallback after
+  three failed v4 handshakes (v3: the client pings), retry delay ±20 % and
+  reset only after 60 s of stable link. The status and the test button say
+  when realtime is refused or down for more than 10 minutes.
+- **States budget**: at most 250 states per minute from the integration (the
+  core takes 300); the rest waits in a backlog, newest value per feature.
+- **A reading without a valid `dateutc`** never replaces a known one.
 
 ## Ideas
 

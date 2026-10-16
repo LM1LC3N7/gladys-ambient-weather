@@ -48,11 +48,13 @@ Uniquement les stations publiques ? Laissez les deux clés vides et activez
 - **Clé d'API**, **clé d'application** : toutes deux nécessaires pour les
   stations de votre compte. Elles sont stockées comme secrets et jamais
   écrites dans les journaux.
-- **Unités** (métrique par défaut) : métrique, c'est °C, km/h, mm ; impérial,
-  °F, mph, pouces. La pression est toujours en hPa et l'intensité de pluie en
-  mm/h : Gladys n'a ni inHg ni in/h. Un appareil garde les unités de sa
-  création : après un changement, ses valeurs restent envoyées dans ces
-  unités ; supprimez-le et recréez-le pour les changer.
+- **Unités** (métrique par défaut) : seules les températures changent, °C
+  (métrique) ou °F (impérial). Le vent est toujours en km/h, les cumuls de
+  pluie en mm, l'intensité en mm/h, la pluie des dernières 24 heures en mm
+  par jour et la pression en hPa : Gladys n'a ni inHg ni in/h, l'impérial se
+  limite donc aux °F. Un appareil garde l'unité de sa création : après un
+  changement, ses valeurs restent envoyées dans cette unité ; supprimez-le
+  et recréez-le pour la changer.
 - **Intervalle de lecture du compte** (5 minutes par défaut, de 1 à 60) : une
   requête à l'API à chaque fois.
 - **Mises à jour en temps réel** (activées par défaut) : une connexion à
@@ -69,16 +71,23 @@ Uniquement les stations publiques ? Laissez les deux clés vides et activez
   jamais deux requêtes à moins de 1,1 s d'intervalle, quelle qu'en soit
   l'origine (lecture périodique, onglet Découverte, bouton de test).
 - Le compte : une requête à chaque « intervalle de lecture du compte », plus
-  une au démarrage et à chaque test.
-- Le temps réel : une connexion, gardée ouverte, rétablie après 5 s, puis
-  10 s, 20 s… jusqu'à 5 minutes.
+  une au démarrage et à chaque test. Clés refusées : un essai toutes les 30
+  minutes jusqu'à ce que vous changiez la configuration. Un « 429 » : la
+  lecture suivante attend le délai demandé par Ambient (Retry-After), une
+  minute sinon.
+- Le temps réel : une connexion, gardée ouverte, rétablie après 5 s environ,
+  puis 10 s, 20 s… jusqu'à 5 minutes (±20 % au hasard) ; le délai revient à
+  5 s une fois qu'un lien a tenu une minute. Une poignée de main doit aboutir
+  en 30 s ; après trois échecs, l'autre version du protocole (Engine.IO v3 ou
+  v4) est essayée.
 - Les stations publiques : une requête par maison localisée à chaque
-  « intervalle de lecture ».
+  « intervalle de lecture » (100 stations au plus), plus une par station
+  publique créée que la recherche n'a pas renvoyée, une à la fois.
 
 Seules les valeurs qui changent sont envoyées à Gladys (plus chaque valeur
-inchangée toutes les 30 minutes), bien en dessous des 300 états par minute
-qu'accepte Gladys. Une mesure de plus d'une heure (station hors ligne) n'est
-pas envoyée.
+inchangée toutes les 30 minutes), et jamais plus de 250 par minute (le reste
+suit une minute plus tard), sous les 300 états par minute qu'accepte Gladys.
+Une mesure de plus d'une heure (station hors ligne) n'est pas envoyée.
 
 ## Stations publiques
 
@@ -87,8 +96,8 @@ partager sur la carte de l'Ambient Weather Network. Elles sont cherchées dans
 un carré autour de chaque maison localisée (Paramètres → Maisons), puis
 filtrées : dans le rayon, en extérieur, une mesure de moins d'une heure, une
 température, aucune de vos propres stations. Les plus proches sont proposées
-dans l'onglet Découverte ; celles que vous créez gardent leurs valeurs tant
-qu'elles restent dans le rayon.
+dans l'onglet Découverte ; celles que vous créez gardent leurs valeurs, lues
+par leur adresse quand la recherche ne les renvoie plus.
 
 Le service de la carte publique **n'est pas une API documentée** : Ambient
 Weather peut le modifier sans préavis. C'est celui qu'utilise la carte

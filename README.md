@@ -14,7 +14,7 @@ User documentation: [docs/en.md](docs/en.md) · [docs/fr.md](docs/fr.md).
 Gladys ⇄ SDK ⇄ src/app.js (AmbientApp)
                  ├─ src/ambient.js   REST GET /v1/devices, public map box (paced)
                  ├─ src/pacer.js     one call at a time, 1.1 s apart (1 req/s per key)
-                 ├─ src/realtime.js  Socket.IO v5 / Engine.IO v4 over Node's WebSocket
+                 ├─ src/realtime.js  Socket.IO, Engine.IO v4 (v3 fallback), Node's WebSocket
                  ├─ src/stations.js  answers -> stations, devices, states (pure)
                  └─ src/sensors.js   the Ambient fields, units and conversions (pure)
 ```

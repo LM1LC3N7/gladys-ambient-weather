@@ -9,7 +9,14 @@
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { AmbientClient } from './ambient.js';
 import { hasAccount, normalizeConfig } from './config.js';
-import { HEARTBEAT } from './constants.js';
+import {
+  DEVICE_TYPES,
+  HEARTBEAT,
+  LIMITED_BACKOFF,
+  REALTIME_DOWN_AFTER,
+  REFUSED_BACKOFF,
+  STATES_PER_MINUTE,
+} from './constants.js';
 import { HttpError } from './http.js';
 import { T } from './i18n.js';
 import { RealtimeClient } from './realtime.js';
@@ -20,12 +27,15 @@ import {
   macId,
   nearbyPublic,
   readingTime,
+  stationOf,
   stationsOf,
   statesOf,
 } from './stations.js';
 import { num } from './sensors.js';
 
 const defaultTimers = { setInterval, clearInterval, setTimeout, clearTimeout };
+
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const coordinate = (value) => (value === null || value === undefined ? NaN : Number(value));
 
@@ -37,6 +47,7 @@ export class AmbientApp {
     timers = defaultTimers,
     client,
     WebSocketImpl,
+    random,
   }) {
     this.gladys = gladys;
     this.logger = logger;
@@ -47,12 +58,23 @@ export class AmbientApp {
     this.realtime = new RealtimeClient({
       WebSocketImpl,
       timers,
+      random,
       logger,
       onSubscribed: (devices) => this.onRealtimeStations(devices),
       onData: (reading) => this.onRealtimeData(reading),
       onStatus: (status) => this.onRealtimeStatus(status),
     });
     this.realtimeStatus = 'stopped';
+    /** Since when the realtime link is not subscribed (ms), for "durably down". */
+    this.realtimeDownSince = undefined;
+    /** No account read before this instant (refused keys, Retry-After). */
+    this.accountNotBefore = 0;
+    this.publicNotBefore = 0;
+    /** States waiting for room in the per-minute budget: feature id -> state. */
+    this.backlog = new Map();
+    /** [instant, count] of the states sent in the last minute. */
+    this.sentLog = [];
+    this.flushTimer = undefined;
     /** id -> station of the account */
     this.own = new Map();
     /** id -> public station within the radius of a house (states) */
@@ -80,6 +102,10 @@ export class AmbientApp {
     this.lastDiscovered = undefined;
     this.lastStatus = undefined;
     this.health = { account: 'off', public: 'off' };
+    this.accountNotBefore = 0;
+    this.publicNotBefore = 0;
+    this.backlog.clear();
+    this.realtimeDownSince = undefined;
     await this.pollAccount();
     await this.pollPublic();
     if (generation !== this.generation) {
@@ -88,6 +114,7 @@ export class AmbientApp {
     if (hasAccount(config)) {
       this.every(config.pollMinutes, () => this.pollAccount());
       if (config.realtime) {
+        this.realtimeDownSince = this.now();
         this.realtime.start({ apiKey: config.apiKey, applicationKey: config.applicationKey });
       }
     }
@@ -103,6 +130,8 @@ export class AmbientApp {
       this.timers.clearInterval(id);
     }
     this.intervals = [];
+    this.timers.clearTimeout(this.flushTimer);
+    this.flushTimer = undefined;
     this.realtime.stop();
   }
 
@@ -179,10 +208,37 @@ export class AmbientApp {
       true,
       T.ok({
         stations: hasAccount(config) ? this.own.size : null,
-        realtime: this.realtimeStatus === 'subscribed',
+        realtime: hasAccount(config) ? this.realtimeState() : null,
         publicStations: config.publicStations ? this.nearby.length : null,
+        publicIssue: config.publicStations && pub !== 'ok' && pub !== 'off' ? pub : null,
       }),
     );
+  }
+
+  /** on | connecting | refused | down (durably) | off. */
+  realtimeState() {
+    if (!this.config.realtime) {
+      return 'off';
+    }
+    if (this.realtimeStatus === 'subscribed') {
+      return 'on';
+    }
+    if (this.realtimeStatus === 'refused') {
+      return 'refused';
+    }
+    const since = this.realtimeDownSince;
+    return since !== undefined && this.now() - since >= REALTIME_DOWN_AFTER ? 'down' : 'connecting';
+  }
+
+  /** How long to wait after a failed read: refused keys, Retry-After. */
+  backoffAfter(err, health) {
+    if (health === 'refused') {
+      return REFUSED_BACKOFF;
+    }
+    if (health === 'limited') {
+      return err?.retryAfterMs ?? LIMITED_BACKOFF;
+    }
+    return 0;
   }
 
   // --- The stations of the account ---------------------------------------------
@@ -192,8 +248,9 @@ export class AmbientApp {
     const next = replace ? new Map() : new Map(this.own);
     for (const station of stations) {
       const known = this.own.get(station.id);
+      // A reading without a valid time never replaces a known one.
       const keep =
-        known && readingTime(known.lastData) > readingTime(station.lastData)
+        known && !(readingTime(station.lastData) >= readingTime(known.lastData))
           ? known.lastData
           : station.lastData;
       next.set(station.id, { ...station, lastData: keep });
@@ -201,9 +258,20 @@ export class AmbientApp {
     this.own = next;
   }
 
-  async pollAccount() {
+  /**
+   * Read the stations of the account. After refused keys, at most every 30
+   * minutes until the configuration changes; after a 429, not before the
+   * Retry-After delay. `force` (the test button) only overrides the refusal
+   * spacing: a 429 delay always holds.
+   */
+  async pollAccount({ force = false } = {}) {
     const { config } = this;
     if (!hasAccount(config)) {
+      return;
+    }
+    const now = this.now();
+    const refused = this.health.account === 'refused';
+    if (now < this.accountNotBefore && !(force && refused)) {
       return;
     }
     const generation = this.generation;
@@ -214,11 +282,13 @@ export class AmbientApp {
       }
       this.mergeOwn(stationsOf(list), { replace: true });
       this.health.account = 'ok';
+      this.accountNotBefore = 0;
     } catch (err) {
       if (generation !== this.generation) {
         return;
       }
       this.health.account = this.classify(err);
+      this.accountNotBefore = this.now() + this.backoffAfter(err, this.health.account);
       this.logger.warn(`Ambient Weather account read failed: ${this.scrub(err)}`);
     }
     await this.publish();
@@ -251,7 +321,12 @@ export class AmbientApp {
 
   async onRealtimeStatus(status) {
     this.realtimeStatus = status;
-    if (status === 'subscribed' || status === 'refused' || status === 'down') {
+    if (status === 'subscribed') {
+      this.realtimeDownSince = undefined;
+    } else if (this.realtimeDownSince === undefined) {
+      this.realtimeDownSince = this.now();
+    }
+    if (status !== 'stopped') {
       await this.refreshStatus();
     }
   }
@@ -278,6 +353,9 @@ export class AmbientApp {
   async pollPublic() {
     const { config } = this;
     if (!config.publicStations) {
+      return;
+    }
+    if (this.now() < this.publicNotBefore) {
       return;
     }
     const generation = this.generation;
@@ -316,6 +394,23 @@ export class AmbientApp {
           this.logger.warn(`Public stations around ${house.name} failed: ${this.scrub(err)}`);
         }
       }
+      // The public stations the user created and the boxes did not return
+      // (beyond the limit, moved out): read one by one, through the pacer.
+      if (!failure) {
+        for (const id of this.createdPublicIds()) {
+          if (all.has(id) || exclude.has(id) || generation !== this.generation) {
+            continue;
+          }
+          try {
+            const station = stationOf(await this.client.publicDevice(id), { isPublic: true });
+            if (station?.id === id && !station.indoor) {
+              all.set(id, station);
+            }
+          } catch (err) {
+            this.logger.warn(`Public station ${id} unavailable: ${this.scrub(err)}`);
+          }
+        }
+      }
       if (generation !== this.generation) {
         return;
       }
@@ -325,6 +420,9 @@ export class AmbientApp {
         this.nearby = [...nearby.values()];
       }
       this.health.public = failure && all.size === 0 ? this.classify(failure) : 'ok';
+      this.publicNotBefore = failure
+        ? this.now() + this.backoffAfter(failure, this.classify(failure))
+        : 0;
     }
     await this.publish();
     await this.refreshStatus();
@@ -359,6 +457,19 @@ export class AmbientApp {
     }
   }
 
+  /** The platform ids (12 hex) of the public stations the user created. */
+  createdPublicIds() {
+    const prefix = this.gladys.externalId(`${DEVICE_TYPES.PUBLIC}:`);
+    const ids = new Set();
+    for (const device of this.gladys.devices ?? []) {
+      const id = String(device.external_id ?? '');
+      if (id.startsWith(prefix) && /^[0-9a-f]{12}$/.test(id.slice(prefix.length))) {
+        ids.add(id.slice(prefix.length));
+      }
+    }
+    return ids;
+  }
+
   /** The units of the features the user created: feature external id -> unit. */
   createdFeatures() {
     const units = new Map();
@@ -372,8 +483,9 @@ export class AmbientApp {
 
   /**
    * The fresh readings of `stations`, for the created features only, and only
-   * what changed (plus a heartbeat): far below the 300 states per minute the
-   * core accepts.
+   * what changed (plus a heartbeat). The core accepts 300 states per minute:
+   * past STATES_PER_MINUTE in the last minute, the rest waits in a backlog
+   * (the newest value of each feature) sent as the minute frees room.
    */
   async publishStates(stations) {
     const created = this.createdFeatures();
@@ -385,14 +497,67 @@ export class AmbientApp {
     const states = stations
       .filter((station) => isFresh(station.lastData, now))
       .flatMap((station) => statesOf(this.gladys, station, { units: this.config.units, unitOf }));
-    if (states.length === 0) {
+    for (const state of states) {
+      this.backlog.set(state.device_feature_external_id, state);
+    }
+    await this.flushStates();
+  }
+
+  /** Room left in the per-minute budget. */
+  stateBudget() {
+    const now = this.now();
+    this.sentLog = this.sentLog.filter(([t]) => now - t < 60_000);
+    return STATES_PER_MINUTE - this.sentLog.reduce((sum, [, n]) => sum + n, 0);
+  }
+
+  async flushStates() {
+    if (this.backlog.size === 0) {
       return;
     }
+    const budget = this.stateBudget();
+    if (budget <= 0) {
+      this.scheduleFlush();
+      return;
+    }
+    const batch = [...this.backlog.values()].slice(0, budget);
+    for (const state of batch) {
+      this.backlog.delete(state.device_feature_external_id);
+    }
     try {
-      await this.gladys.publishChangedStates(states, { heartbeat: HEARTBEAT });
+      const result = await this.gladys.publishChangedStates(batch, { heartbeat: HEARTBEAT });
+      this.sentLog.push([this.now(), result?.count ?? batch.length]);
     } catch (err) {
       this.logger.warn(`Publishing the states failed: ${err.message}`);
+      // Sent again later, unless a newer value came in meanwhile.
+      for (const state of batch) {
+        if (!this.backlog.has(state.device_feature_external_id)) {
+          this.backlog.set(state.device_feature_external_id, state);
+        }
+      }
+      this.scheduleFlush(60_000);
+      return;
     }
+    if (this.backlog.size > 0) {
+      this.scheduleFlush();
+    }
+  }
+
+  /** Flush again when the oldest send of the minute expires. */
+  scheduleFlush(wait) {
+    if (this.flushTimer !== undefined) {
+      return;
+    }
+    const oldest = this.sentLog[0]?.[0];
+    const delay =
+      wait ??
+      (oldest !== undefined ? Math.max(1_000, 60_000 - (this.now() - oldest) + 100) : 1_000);
+    const generation = this.generation;
+    this.flushTimer = this.timers.setTimeout(() => {
+      this.flushTimer = undefined;
+      if (generation === this.generation) {
+        this.flushStates().catch((err) => this.logger.warn(`Flush failed: ${err.message}`));
+      }
+    }, delay);
   }
 
   // --- Configuration screen button -------------------------------------------------
@@ -439,7 +604,7 @@ export class AmbientApp {
     const en = [];
     const fr = [];
     if (hasAccount(config)) {
-      await this.pollAccount();
+      await this.pollAccount({ force: true });
       const { account } = this.health;
       if (account === 'ok') {
         en.push(`Account: ${this.own.size} station(s).`);
@@ -448,13 +613,10 @@ export class AmbientApp {
           en.push(this.stationLine(station, 'en'));
           fr.push(this.stationLine(station, 'fr'));
         }
-        const live = this.realtimeStatus === 'subscribed';
-        en.push(
-          `Realtime: ${config.realtime ? (live ? 'connected' : 'not connected yet') : 'off'}.`,
-        );
-        fr.push(
-          `Temps réel : ${config.realtime ? (live ? 'connecté' : 'pas encore connecté') : 'désactivé'}.`,
-        );
+        const state = this.realtimeState();
+        const protocol = state === 'off' ? '' : ` (Engine.IO v${this.realtime.eio})`;
+        en.push(`${capitalize(T.realtime(state).en)}${protocol}.`);
+        fr.push(`${capitalize(T.realtime(state).fr)}${protocol}.`);
       } else {
         const text =
           account === 'refused'

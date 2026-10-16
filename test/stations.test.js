@@ -68,20 +68,26 @@ test('metric conversions of every kind of sensor', () => {
   assert.equal(valueOf(groups, 'outdoor', 'feelsLike'), undefined);
 });
 
-test('imperial keeps the Ambient values, pressure and rain rate stay metric', () => {
+test('imperial only changes the temperatures: wind, rain and pressure keep their unit', () => {
   const groups = sensorsOf(backyard.lastData, { units: 'imperial' });
   const sensor = (field) => groups[0].sensors.find((s) => s.field === field);
-  assert.deepEqual([sensor('tempf').value, sensor('tempf').unit], [64.4, 'fahrenheit']);
+  const pair = (field) => [sensor(field).value, sensor(field).unit];
+  assert.deepEqual(pair('tempf'), [64.4, 'fahrenheit']);
+  assert.deepEqual(pair('windspeedmph'), [9, 'kilometer-per-hour']);
+  assert.deepEqual(pair('dailyrainin'), [7.9, 'mm']);
+  assert.deepEqual(pair('baromrelin'), [1016.3, 'hPa']);
+  assert.deepEqual(pair('hourlyrainin'), [3, 'millimeter-per-hour']);
+  assert.equal(groups[2].sensors[0].unit, 'fahrenheit', 'the extra sensors too');
+});
+
+test('the rain of the last 24 hours is a daily amount, humidity a decimal', () => {
+  const [group] = sensorsOf({ '24hourrainin': 0.5, humidity: 57.6 });
+  const [humidity, rain] = group.sensors;
   assert.deepEqual(
-    [sensor('windspeedmph').value, sensor('windspeedmph').unit],
-    [5.6, 'mile-per-hour'],
+    [rain.field, rain.value, rain.unit],
+    ['24hourrainin', 12.7, 'millimeter-per-day'],
   );
-  assert.deepEqual([sensor('dailyrainin').value, sensor('dailyrainin').unit], [0.31, 'inch']);
-  assert.deepEqual([sensor('baromrelin').value, sensor('baromrelin').unit], [1016.3, 'hPa']);
-  assert.deepEqual(
-    [sensor('hourlyrainin').value, sensor('hourlyrainin').unit],
-    [3, 'millimeter-per-hour'],
-  );
+  assert.deepEqual([humidity.value, humidity.type], [57.6, 'decimal']);
 });
 
 test('a public station only shows its outdoor weather, never batteries nor indoor values', () => {

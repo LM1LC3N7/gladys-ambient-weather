@@ -40,7 +40,7 @@ src/app.js         AmbientApp: account reads, realtime, public stations,
                    discovery, states, status, test button
 src/ambient.js     the client: GET /v1/devices, the public box (paced)
 src/pacer.js       one call at a time, a minimum gap apart
-src/realtime.js    Socket.IO v5 / Engine.IO v4 client over Node's WebSocket
+src/realtime.js    Socket.IO client (Engine.IO v4, v3 fallback) over Node's WebSocket
 src/stations.js    answers -> stations, nearby public ones, devices, states (pure)
 src/sensors.js     the Ambient fields -> Gladys category/type/unit, conversions (pure)
 src/config.js      DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
@@ -59,12 +59,19 @@ test/helpers/      fake fetch, fake timers, fake WebSocket; Gladys is the SDK's 
   every REST call goes through the pacer (1.1 s).
 - **Realtime** `wss://rt2.ambientweather.net/socket.io/?api=1&applicationKey=&EIO=4&transport=websocket`,
   then `42["subscribe",{"apiKeys":[...]}]`; events `subscribed`
-  (`{ devices }`) and `data` (a full reading with `macAddress`).
+  (`{ devices }`) and `data` (a full reading with `macAddress`). `EIO=3`
+  after three failed handshakes (the client then pings); 30 s handshake
+  timeout, retry 5 s → 5 min ±20 %, reset after 60 s of stable link.
+- **Units in Gladys**: only temperatures follow the unit system; wind km/h,
+  rain mm (rate mm/h, 24 h mm per day), pressure hPa, solar radiation lux.
 - **Values are imperial**: °F, inHg, mph, inches, W/m²; `dateutc` in ms.
   Batteries: 1 = OK, 0 = low. Numbers sometimes arrive as strings.
-- **Public map** `GET https://lightning.ambientweather.net/devices?$publicBox[0][0]=west&[0][1]=south&[1][0]=east&[1][1]=north&$limit=`:
+- **Public map** `GET https://lightning.ambientweather.net/devices?$publicBox[0][0]=west&[0][1]=south&[1][0]=east&[1][1]=north&$limit=100`:
   `{ data: [...] }`, same station shape plus `info.indoor`; undocumented,
   checked once on 2026-10-16. Stale stations (years old) are listed too.
+  A created public station the box misses is read by `GET .../devices/<MAC>`.
+- **Gladys budget**: at most 250 states per minute from the app (backlog
+  beyond); refused keys read every 30 min; a 429 waits its Retry-After.
 
 ## Rules
 

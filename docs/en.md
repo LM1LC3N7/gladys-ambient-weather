@@ -46,11 +46,12 @@ nearby**.
 
 - **API key**, **Application key**: both needed for the stations of your
   account. They are stored as secrets and never written in the logs.
-- **Units** (metric by default): metric is °C, km/h, mm; imperial is °F, mph,
-  inches. The pressure is always in hPa and the rain rate in mm/h: Gladys has
-  no inHg nor in/h unit. A device keeps the units it was created with: after
-  a switch, its values are still sent in those units; delete and re-create it
-  to change them.
+- **Units** (metric by default): only the temperatures change, °C (metric)
+  or °F (imperial). Wind is always in km/h, rain totals in mm, the rain rate
+  in mm/h, the rain of the last 24 hours in mm per day and the pressure in
+  hPa: Gladys has no inHg nor in/h, so imperial stays limited to °F. A device keeps the unit it was created with: after a
+  switch, its values are still sent in that unit; delete and re-create it to
+  change it.
 - **Account read interval** (5 minutes by default, 1 to 60): one request to
   the API each time.
 - **Realtime updates** (on by default): a connection to the realtime API of
@@ -67,14 +68,22 @@ nearby**.
   two requests less than 1.1 s apart, whatever triggers them (the periodic
   read, the Discovery tab, the test button).
 - The account: one request every "account read interval", plus one at
-  startup and at each test.
-- The realtime link: one connection, kept open, reconnected after 5 s, then
-  10 s, 20 s… up to 5 minutes.
-- The public stations: one request per located house every "read interval".
+  startup and at each test. Refused keys: one try every 30 minutes until you
+  change the configuration. A "429": the next read waits the delay Ambient
+  asks for (Retry-After), one minute otherwise.
+- The realtime link: one connection, kept open, reconnected after about 5 s,
+  then 10 s, 20 s… up to 5 minutes (±20 % at random); the delay goes back to
+  5 s once a link held for a minute. A handshake must finish within 30 s;
+  after three failures the other version of the protocol (Engine.IO v3 or
+  v4) is tried.
+- The public stations: one request per located house every "read interval"
+  (100 stations at most), plus one per created public station the search
+  did not return, one at a time.
 
 Only the values that changed are sent to Gladys (plus every unchanged value
-every 30 minutes), far below the 300 states per minute Gladys accepts. A
-reading more than an hour old (a station offline) is not sent.
+every 30 minutes), and never more than 250 per minute (the rest follows a
+minute later), below the 300 states per minute Gladys accepts. A reading
+more than an hour old (a station offline) is not sent.
 
 ## Public stations
 
@@ -83,7 +92,7 @@ Weather Network map. They are searched in a square around each located
 house (Settings → Houses), then filtered: within the radius, outdoor, a
 reading of less than an hour, a temperature, not one of your own stations.
 The nearest ones are offered in the Discovery tab; those you create keep
-their values as long as they stay within the radius.
+their values, read by their address when the search no longer returns them.
 
 The public map service is **not a documented API**: Ambient Weather may
 change it without notice. It is the one the ambientweather.net map uses, and

@@ -42,11 +42,11 @@ const KINDS = {
   soilTemperature: (units) => KINDS.temperature(units, TYPES.TEMPERATURE_SENSOR.PROBE),
   humidity: () => ({
     category: CAT.HUMIDITY_SENSOR,
-    type: TYPES.SENSOR.INTEGER,
+    type: TYPES.SENSOR.DECIMAL,
     unit: UNITS.PERCENT,
     min: 0,
     max: 100,
-    convert: (v) => Math.round(v),
+    convert: (v) => round(v, 1),
   }),
   soilMoisture: () => ({ ...KINDS.humidity(), category: CAT.SOIL_MOISTURE_SENSOR }),
   // Gladys has no inHg unit: the pressure is in hPa in both unit systems.
@@ -58,13 +58,15 @@ const KINDS = {
     max: 1100,
     convert: (inHg) => round(inHg * 33.8639, 1),
   }),
-  wind: (units) => ({
+  // Wind and rain totals are in km/h and mm in both unit systems (review
+  // decision, see TODO.md): only the temperature follows the unit system.
+  wind: () => ({
     category: CAT.SPEED_SENSOR,
     type: TYPES.SPEED_SENSOR.DECIMAL,
-    unit: metric(units) ? UNITS.KILOMETER_PER_HOUR : UNITS.MILE_PER_HOUR,
+    unit: UNITS.KILOMETER_PER_HOUR,
     min: 0,
-    max: metric(units) ? 400 : 250,
-    convert: (mph) => (metric(units) ? round(mph * 1.609344, 1) : round(mph, 1)),
+    max: 400,
+    convert: (mph) => round(mph * 1.609344, 1),
   }),
   direction: () => ({
     category: CAT.ANGLE_SENSOR,
@@ -83,14 +85,16 @@ const KINDS = {
     max: 1000,
     convert: (inches) => round(inches * 25.4, 1),
   }),
-  rain: (units) => ({
+  rain: () => ({
     category: CAT.PRECIPITATION_SENSOR,
     type: TYPES.PRECIPITATION_SENSOR.DECIMAL,
-    unit: metric(units) ? UNITS.MM : UNITS.INCH,
+    unit: UNITS.MM,
     min: 0,
-    max: metric(units) ? 100_000 : 4_000,
-    convert: (inches) => (metric(units) ? round(inches * 25.4, 1) : round(inches, 2)),
+    max: 100_000,
+    convert: (inches) => round(inches * 25.4, 1),
   }),
+  // The rain of the last 24 hours is a daily amount: Gladys has mm per day.
+  rain24h: () => ({ ...KINDS.rain(), unit: UNITS.MILLIMETER_PER_DAY, max: 2_000 }),
   uv: () => ({
     category: CAT.UV_SENSOR,
     type: TYPES.UV_SENSOR.INTEGER,
@@ -100,7 +104,7 @@ const KINDS = {
     convert: (v) => Math.round(v),
   }),
   // Gladys has no W/m² unit: the solar radiation is shown in lux, with the
-  // usual daylight approximation (1 W/m² ≈ 126.7 lx, the factor Home
+  // usual daylight approximation (1 W/m² ≈ 126.6 lx, 1/0.0079, the factor Home
   // Assistant's Ambient integration applies).
   solar: () => ({
     category: CAT.LIGHT_SENSOR,
@@ -141,7 +145,7 @@ const OUTDOOR = [
   ['hourlyrainin', 'rainRate', 'Rain rate'],
   ['eventrainin', 'rain', 'Rain (event)'],
   ['dailyrainin', 'rain', 'Rain today'],
-  ['24hourrainin', 'rain', 'Rain (24 h)'],
+  ['24hourrainin', 'rain24h', 'Rain (24 h)'],
   ['weeklyrainin', 'rain', 'Rain this week'],
   ['monthlyrainin', 'rain', 'Rain this month'],
   ['yearlyrainin', 'rain', 'Rain this year'],

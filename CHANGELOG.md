@@ -20,13 +20,21 @@ the notes of the version's GitHub Release.
   per sensor group: outdoor, indoor console, extra sensors 1 to 10, soil
   probes 1 to 10. Only the sensors a station reports are created.
 - Realtime updates through the official realtime API (on by default), on top
-  of a periodic read (every 5 minutes by default).
-- Metric or imperial units; a device keeps the units it was created with.
+  of a periodic read (every 5 minutes by default), with a fallback to the
+  older protocol version and a reconnection that never hammers the server.
+- Temperatures in °C or °F; wind always in km/h, rain in mm (mm/h for the
+  rate, mm per day for the last 24 hours), pressure in hPa. A device keeps
+  the unit it was created with.
 - The public stations of the Ambient Weather Network around the located
   houses, without account (off by default): the nearest ones within a radius
-  are offered in the Discovery tab, outdoor values only.
-- Never more than 1 request per second to Ambient Weather, only the changed
-  values sent to Gladys, no reading older than an hour.
+  are offered in the Discovery tab, outdoor values only; the created ones
+  keep updating even when the search no longer returns them.
+- Never more than 1 request per second to Ambient Weather, refused keys read
+  again only every 30 minutes, the Retry-After of a 429 respected; only the
+  changed values sent to Gladys, at most 250 per minute, no reading older
+  than an hour.
+- A connection status that also tells when realtime is refused or down, and
+  when the public stations are unavailable.
 - "Test Ambient Weather" button: the stations of the account, the realtime
   link and the public stations nearby, with their last reading.
 

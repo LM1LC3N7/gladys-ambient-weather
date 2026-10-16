@@ -19,12 +19,27 @@ export function setFetch(impl) {
 }
 
 export class HttpError extends Error {
-  constructor(status, url, body) {
+  constructor(status, url, body, retryAfterMs) {
     super(`HTTP ${status} on ${new URL(url).pathname}${body ? `: ${body}` : ''}`);
     this.name = 'HttpError';
     this.status = status;
     this.body = body;
+    /** The delay a 429 / 503 asks for (Retry-After), in ms, or undefined. */
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/** Retry-After: seconds, or an HTTP date. */
+export function retryAfterMs(header, now = Date.now()) {
+  if (header === null || header === undefined || header === '') {
+    return undefined;
+  }
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+  const date = Date.parse(header);
+  return Number.isFinite(date) ? Math.max(0, date - now) : undefined;
 }
 
 /** The network failed (DNS, timeout...): the message without the URL. */
@@ -49,7 +64,12 @@ export async function getJson(url, { timeout = HTTP_TIMEOUT } = {}) {
   }
   const text = await response.text().catch(() => '');
   if (!response.ok) {
-    throw new HttpError(response.status, url, text.trim().slice(0, 200));
+    throw new HttpError(
+      response.status,
+      url,
+      text.trim().slice(0, 200),
+      retryAfterMs(response.headers?.get?.('retry-after')),
+    );
   }
   return text ? JSON.parse(text) : undefined;
 }

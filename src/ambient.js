@@ -36,4 +36,19 @@ export class AmbientClient {
     const body = await this.pacePublic(() => getJson(url.href));
     return Array.isArray(body) ? body : (body?.data ?? []);
   }
+
+  /**
+   * One public station by its MAC address (`GET /devices/<mac>`, as
+   * aioambient's `get_device_details`): a station the user created keeps its
+   * values even when it falls out of the box or the limit. `id` is the
+   * 12-hex platform id; undefined when the station is unknown.
+   */
+  async publicDevice(id) {
+    const mac = id.toUpperCase().match(/../g).join(':');
+    // Only hex digits and colons: safe in a path as is, like aioambient sends it.
+    const url = `${PUBLIC_URL}/${mac}`;
+    const body = await this.pacePublic(() => getJson(url));
+    const raw = Array.isArray(body) ? body[0] : body?.macAddress ? body : body?.data;
+    return Array.isArray(raw) ? raw[0] : raw;
+  }
 }

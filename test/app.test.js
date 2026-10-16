@@ -34,9 +34,11 @@ async function setup({ config = KEYS, houses = [HOME], start = true } = {}) {
     devices: () => json(fixture('devices.json')),
     public: () => json(fixture('public.json')),
   };
+  answers.station = () => json({ message: 'not found' }, 404);
   fake = installFetch([
     [/^https:\/\/rt\.ambientweather\.net\/v1\/devices\?/, (call) => answers.devices(call)],
     [/^https:\/\/lightning\.ambientweather\.net\/devices\?/, (call) => answers.public(call)],
+    [/^https:\/\/lightning\.ambientweather\.net\/devices\/[0-9A-F:]+$/, (c) => answers.station(c)],
   ]);
   const gladys = createFakeGladys({ selector: 'ambient-weather', config, houses });
   const timers = createFakeTimers();
@@ -57,6 +59,7 @@ async function setup({ config = KEYS, houses = [HOME], start = true } = {}) {
     timers,
     client,
     WebSocketImpl: ws.FakeWebSocket,
+    random: () => 0.5,
   });
   gladys.onAction(ACTIONS.TEST, () => app.testConnection());
   gladys.onDeviceCreated(() => app.publish());
@@ -93,7 +96,7 @@ test('the stations of the account: one REST read, the devices, the status', asyn
   assert.equal(gladys.fake.states.length, 0);
   assert.deepEqual(gladys.fake.connectionStatus, {
     connected: true,
-    message: T.ok({ stations: 2, realtime: false, publicStations: null }),
+    message: T.ok({ stations: 2, realtime: 'connecting', publicStations: null }),
   });
   // The account read every 5 minutes, the realtime link opened.
   assert.deepEqual(
@@ -130,7 +133,7 @@ test('the next reads only send what changed, and a realtime push updates at once
   await flush();
   assert.equal(
     gladys.fake.connectionStatus.message.en,
-    T.ok({ stations: 2, realtime: true, publicStations: null }).en,
+    T.ok({ stations: 2, realtime: 'on', publicStations: null }).en,
   );
 
   const reading = { ...fixture('devices.json')[0].lastData, dateutc: FIXTURE_NOW + 60_000 };
@@ -144,7 +147,44 @@ test('the next reads only send what changed, and a realtime push updates at once
   // A push of an unknown station is ignored.
   socket.event('data', { macAddress: '11:22:33:44:55:66', tempf: 1, dateutc: FIXTURE_NOW });
   await flush();
-  void answers;
+  // A reading without a valid time never replaces a known one.
+  answers.devices = () => {
+    const list = fixture('devices.json');
+    delete list[0].lastData.dateutc;
+    list[0].lastData.tempf = 32;
+    return json(list);
+  };
+  clock.now += 300_000;
+  await timers.runIntervals();
+  assert.equal(gladys.fake.lastState(`${STATION}:tempf`), 20);
+});
+
+test('realtime refused or down for long: the status and the test button say so', async () => {
+  const { gladys, ws, clock, timers, app } = await setup();
+  ws.last().receive('0{"pingInterval":25000,"pingTimeout":20000}');
+  ws.last().receive('44{"message":"invalid applicationKey"}');
+  await flush();
+  assert.equal(
+    gladys.fake.connectionStatus.message.en,
+    T.ok({ stations: 2, realtime: 'refused', publicStations: null }).en,
+  );
+  const ack = await gladys.fake.action(ACTIONS.TEST);
+  assert.match(
+    ack.data.message.en,
+    /Realtime refused \(check the Application key\) \(Engine\.IO v4\)\./,
+  );
+  assert.match(ack.data.message.fr, /Temps réel refusé/);
+
+  // Down (not refused) for more than 10 minutes.
+  await app.start(KEYS);
+  ws.last().close(1006);
+  await flush();
+  clock.now += 11 * 60_000;
+  await timers.runIntervals();
+  assert.equal(
+    gladys.fake.connectionStatus.message.en,
+    T.ok({ stations: 2, realtime: 'down', publicStations: null }).en,
+  );
 });
 
 test('a feature created in °F keeps getting °F after a switch to metric', async () => {
@@ -161,8 +201,8 @@ test('a feature created in °F keeps getting °F after a switch to metric', asyn
   assert.equal(gladys.fake.lastState(`${STATION}:tempf`), 64.4);
 });
 
-test('refused keys: a clear status, and no key in any message', async () => {
-  const { gladys, answers, app } = await setup({ start: false });
+test('refused keys: a clear status, no key in any message, a read every 30 minutes', async () => {
+  const { gladys, answers, app, timers, clock } = await setup({ start: false });
   answers.devices = () => json({ error: 'apiKey-invalid' }, 401);
   await app.start(KEYS);
   assert.deepEqual(gladys.fake.connectionStatus, { connected: false, message: T.keysRefused });
@@ -170,16 +210,48 @@ test('refused keys: a clear status, and no key in any message', async () => {
   assert.ok(ack.data.message.en.startsWith(T.keysRefused.en));
   const everything = JSON.stringify([gladys.fake.connectionStatuses, ack]);
   assert.ok(!everything.includes('API-KEY-1') && !everything.includes('APP-KEY-1'));
+  assert.equal(calls(REST).length, 2, 'the test button forces one read');
+  // The periodic reads wait 30 minutes.
+  clock.now += 5 * 60_000;
+  await timers.runIntervals();
+  assert.equal(calls(REST).length, 2);
+  clock.now += 26 * 60_000;
+  await timers.runIntervals();
+  assert.equal(calls(REST).length, 3);
+  // A new configuration starts over at once.
+  answers.devices = () => json(fixture('devices.json'));
+  await app.start(KEYS);
+  assert.equal(calls(REST).length, 4);
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+});
+
+test('a 429 waits its Retry-After', async () => {
+  const { gladys, answers, timers, clock } = await setup();
+  answers.devices = () =>
+    new Response('{"error":"above-user-rate-limit"}', {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after': '120' },
+    });
+  await timers.runIntervals();
+  assert.deepEqual(gladys.fake.connectionStatus, { connected: false, message: T.rateLimited });
+  clock.now += 100_000;
+  await timers.runIntervals();
+  assert.equal(calls(REST).length, 2, 'still within the 120 s');
+  clock.now += 30_000;
+  await timers.runIntervals();
+  assert.equal(calls(REST).length, 3);
 });
 
 test('a 429 says to slow down, a network failure names no URL', async () => {
-  const { gladys, answers, timers } = await setup({ start: true });
+  const { gladys, answers, timers, clock } = await setup({ start: true });
   answers.devices = () => json({ error: 'above-user-rate-limit' }, 429);
   await timers.runIntervals();
   assert.deepEqual(gladys.fake.connectionStatus, { connected: false, message: T.rateLimited });
   answers.devices = () => {
     throw new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
   };
+  // Without Retry-After, one minute.
+  clock.now += 61_000;
   await timers.runIntervals();
   const message = gladys.fake.connectionStatus.message.en;
   assert.match(message, /network ENOTFOUND on rt\.ambientweather\.net/);
@@ -223,7 +295,7 @@ test('public stations without an account: the nearest ones around each house', a
       call.params['$publicBox[1][1]'],
       call.params.$limit,
     ],
-    ['-74.119', '40.62', '-73.881', '40.8', '50'],
+    ['-74.119', '40.62', '-73.881', '40.8', '100'],
   );
   assert.deepEqual(
     gladys.fake.discoveredDevices.map((d) => [d.name, d.external_id]),
@@ -277,6 +349,64 @@ test('public stations: no located house, or the map down', async () => {
   answers.public = () => json(fixture('public.json'));
   await timers.runIntervals();
   assert.equal(gladys.fake.connectionStatus.connected, true);
+
+  // Refused: a dedicated text.
+  answers.public = () => json({ message: 'forbidden' }, 403);
+  await app.start({ public_stations: true });
+  assert.deepEqual(gladys.fake.connectionStatus, {
+    connected: false,
+    message: T.publicDown('refused'),
+  });
+});
+
+test('public stations down next to a working account: the status says it', async () => {
+  const { gladys, answers, app } = await setup({ start: false });
+  answers.public = () => json({ message: 'oops' }, 503);
+  await app.start({ ...KEYS, public_stations: true });
+  const { connected, message } = gladys.fake.connectionStatus;
+  assert.equal(connected, true);
+  assert.match(
+    message.en,
+    /^2 stations of the account, .*\. The Ambient Weather Network does not answer \(HTTP 503/,
+  );
+  assert.match(message.fr, /L'Ambient Weather Network ne répond pas/);
+});
+
+test('a created public station the search no longer returns is read by its MAC', async () => {
+  const { gladys, answers, timers, clock } = await setup({ config: { public_stations: true } });
+  await createAll(gladys);
+  const PIER = 'ext:ambient-weather:public:aa0000000001';
+  assert.equal(gladys.fake.lastState(`${PIER}:tempf`), 17.5);
+  answers.public = () => json({ data: [] });
+  const [pier] = fixture('public.json').data;
+  answers.station = () =>
+    json({ ...pier, lastData: { ...pier.lastData, tempf: 68, dateutc: FIXTURE_NOW + 600_000 } });
+  clock.now += 600_000;
+  await timers.runIntervals();
+  const lookups = calls(/lightning\.ambientweather\.net\/devices\//);
+  // One call per created public station, one at a time.
+  assert.deepEqual(
+    lookups.map((c) => new URL(c.url).pathname),
+    ['/devices/00:0E:C6:AA:BB:01', '/devices/AA:00:00:00:00:01', '/devices/AA:00:00:00:00:02'],
+  );
+  assert.equal(gladys.fake.lastState(`${PIER}:tempf`), 20);
+});
+
+test('never more than 250 states a minute: the rest follows', async () => {
+  const { gladys, app, timers, clock } = await setup({ config: {} });
+  for (let i = 0; i < 300; i += 1) {
+    const id = `ext:ambient-weather:station:000000000000:f${i}`;
+    app.backlog.set(id, { device_feature_external_id: id, state: i });
+  }
+  await app.flushStates();
+  assert.equal(gladys.fake.states.length, 250);
+  assert.equal(app.backlog.size, 50);
+  const [flush] = timers.timeouts();
+  assert.ok(flush.ms > 59_000 && flush.ms <= 60_100, `flush in ${flush.ms} ms`);
+  clock.now += flush.ms;
+  await timers.runTimeouts();
+  assert.equal(gladys.fake.states.length, 300);
+  assert.equal(app.backlog.size, 0);
 });
 
 test('the test button: each station and its last reading, in both languages', async () => {
@@ -287,7 +417,7 @@ test('the test button: each station and its last reading, in both languages', as
   assert.match(en, /^Account: 2 station\(s\)\./);
   assert.match(en, /- Backyard: 18 °C, read 1 min ago/);
   assert.match(en, /- Cabin: 10.1 °C, read 4 h ago/);
-  assert.match(en, /Realtime: not connected yet\./);
+  assert.match(en, /Realtime connecting \(Engine\.IO v4\)\./);
   assert.match(en, /- Hudson Pier \(1.1 km\): 17.5 °C, read 1 min ago/);
   assert.match(fr, /- Backyard : 18 °C, mesure d'il y a 1 min/);
   assert.match(fr, /- Cabin : 10,1 °C, mesure d'il y a 4 h/);

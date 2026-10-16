@@ -65,14 +65,14 @@
       "type": "select",
       "label": { "en": "Units", "fr": "Unités" },
       "description": {
-        "en": "Metric: °C, km/h, mm. Imperial: °F, mph, inches. The pressure is always in hPa and the rain rate in mm/h (Gladys has no inHg nor in/h). A device keeps the units it was created with.",
-        "fr": "Métrique : °C, km/h, mm. Impérial : °F, mph, pouces. La pression est toujours en hPa et l'intensité de pluie en mm/h (Gladys n'a ni inHg ni in/h). Un appareil garde les unités de sa création."
+        "en": "Only the temperatures change: °C (metric) or °F (imperial). Wind is always in km/h, rain in mm (mm/h for the rate, mm per day for the last 24 hours) and pressure in hPa, the units Gladys has. A device keeps the unit it was created with.",
+        "fr": "Seules les températures changent : °C (métrique) ou °F (impérial). Le vent est toujours en km/h, la pluie en mm (mm/h pour l'intensité, mm par jour pour les dernières 24 heures) et la pression en hPa, les unités dont dispose Gladys. Un appareil garde l'unité de sa création."
       },
       "required": false,
       "default": "metric",
       "options": [
-        { "value": "metric", "label": { "en": "Metric", "fr": "Métrique" } },
-        { "value": "imperial", "label": { "en": "Imperial", "fr": "Impérial" } }
+        { "value": "metric", "label": { "en": "Metric (°C)", "fr": "Métrique (°C)" } },
+        { "value": "imperial", "label": { "en": "Imperial (°F)", "fr": "Impérial (°F)" } }
       ]
     },
     {
@@ -158,7 +158,7 @@
   "actions": [
     {
       "key": "test_connection",
-      "timeout_seconds": 30,
+      "timeout_seconds": 60,
       "label": { "en": "Test Ambient Weather", "fr": "Tester Ambient Weather" },
       "description": {
         "en": "Reads the stations of the account and the public stations nearby, and shows their last reading.",

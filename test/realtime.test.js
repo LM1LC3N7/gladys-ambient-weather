@@ -40,13 +40,15 @@ test('the pacer runs one call at a time, at least the gap apart', async () => {
   assert.deepEqual(sleeps, [1_100, 1_100]);
 });
 
-function setup() {
+function setup({ random = () => 0.5 } = {}) {
   const timers = createFakeTimers();
   const ws = createFakeWebSocket();
   const seen = { subscribed: [], data: [], status: [] };
   const client = new RealtimeClient({
     WebSocketImpl: ws.FakeWebSocket,
     timers,
+    // 0.5: no jitter, so the delays read plainly.
+    random,
     logger: quiet,
     onSubscribed: (devices) => seen.subscribed.push(devices),
     onData: (reading) => seen.data.push(reading),
@@ -104,9 +106,21 @@ test('realtime: a lost link reconnects with a growing delay', async () => {
     [10_000],
   );
   await timers.runTimeouts();
-  // A successful subscription resets the delay.
+  // A subscription that does not hold keeps the delay growing.
   ws.last().handshake();
   ws.last().event('subscribed', { devices: [] });
+  ws.last().close(1006);
+  assert.deepEqual(
+    timers.timeouts().map((t) => t.ms),
+    [20_000],
+  );
+  await timers.runTimeouts();
+  // One that holds for a minute resets it.
+  ws.last().handshake();
+  ws.last().event('subscribed', { devices: [] });
+  const stable = timers.timeouts().find((t) => t.ms === 60_000);
+  timers.pending.delete(stable.id);
+  stable.fn();
   ws.last().close(1006);
   assert.deepEqual(
     timers.timeouts().map((t) => t.ms),
@@ -115,6 +129,62 @@ test('realtime: a lost link reconnects with a growing delay', async () => {
   assert.ok(seen.status.includes('subscribed'));
   client.stop();
   assert.equal(timers.timeouts().length, 0, 'stop cancels the retry');
+});
+
+test('realtime: the retry delay is spread by ±20 %', () => {
+  for (const [random, expected] of [
+    [0, 4_000],
+    [1, 6_000],
+  ]) {
+    const { ws, timers, client } = setup({ random: () => random });
+    client.start(KEYS);
+    ws.last().close(1006);
+    assert.deepEqual(
+      timers.timeouts().map((t) => t.ms),
+      [expected],
+    );
+    client.stop();
+  }
+});
+
+test('realtime: a handshake that does not finish in 30 s is a failure', async () => {
+  const { ws, timers, client } = setup();
+  client.start(KEYS);
+  const [handshake] = timers.timeouts();
+  assert.equal(handshake.ms, 30_000);
+  await timers.runTimeouts();
+  assert.equal(ws.sockets[0].closed, true);
+  assert.equal(client.status, 'down');
+  assert.equal(client.failures, 1);
+  client.stop();
+});
+
+test('realtime: after three failed v4 handshakes, Engine.IO v3 (the client pings)', async () => {
+  const { ws, timers, client, seen } = setup();
+  client.start(KEYS);
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(new URL(ws.last().url).searchParams.get('EIO'), '4');
+    ws.last().close(1006);
+    await timers.runTimeouts();
+  }
+  const socket = ws.last();
+  assert.equal(new URL(socket.url).searchParams.get('EIO'), '3');
+  socket.receive('0{"sid":"abc","upgrades":[],"pingInterval":25000,"pingTimeout":60000}');
+  assert.deepEqual(socket.sent, [], 'v3: the server joins the namespace by itself');
+  // The server joins the namespace, the client subscribes.
+  socket.receive('40');
+  assert.deepEqual(socket.sent, ['42["subscribe",{"apiKeys":["API-KEY-1"]}]']);
+  // The client pings every pingInterval; the pong keeps the link alive.
+  const ping = timers.timeouts().find((t) => t.ms === 25_000);
+  timers.pending.delete(ping.id);
+  ping.fn();
+  assert.equal(socket.sent.at(-1), '2');
+  socket.receive('3');
+  assert.equal(timers.timeouts().find((t) => t.ms === 85_000) !== undefined, true);
+  socket.event('subscribed', { devices: [{ macAddress: 'x' }] });
+  assert.equal(client.status, 'subscribed');
+  assert.equal(seen.subscribed.length, 1);
+  client.stop();
 });
 
 test('realtime: no ping in time closes and reconnects', async () => {
