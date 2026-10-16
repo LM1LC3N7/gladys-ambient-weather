@@ -49,9 +49,10 @@ nearby**.
 - **Units** (metric by default): only the temperatures change, °C (metric)
   or °F (imperial). Wind is always in km/h, rain totals in mm, the rain rate
   in mm/h, the rain of the last 24 hours in mm per day and the pressure in
-  hPa: Gladys has no inHg nor in/h, so imperial stays limited to °F. A device keeps the unit it was created with: after a
-  switch, its values are still sent in that unit; delete and re-create it to
-  change it.
+  hPa: Gladys accepts neither mph for its wind sensors nor inches for its
+  rain sensors (and has no inHg), so imperial stays limited to °F. A device
+  keeps the unit it was created with: after a switch, its values are still
+  sent in that unit; delete and re-create it to change it.
 - **Account read interval** (5 minutes by default, 1 to 60): one request to
   the API each time.
 - **Realtime updates** (on by default): a connection to the realtime API of

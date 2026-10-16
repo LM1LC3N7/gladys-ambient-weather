@@ -409,6 +409,55 @@ test('never more than 250 states a minute: the rest follows', async () => {
   assert.equal(app.backlog.size, 0);
 });
 
+test('two flushes at the same time share the 250-state budget', async () => {
+  const { gladys, app } = await setup({ config: {} });
+  const fill = (from, to) => {
+    for (let i = from; i < to; i += 1) {
+      const id = `ext:ambient-weather:station:000000000000:f${i}`;
+      app.backlog.set(id, { device_feature_external_id: id, state: i });
+    }
+  };
+  fill(0, 200);
+  const first = app.flushStates(); // reserves 200 before its await
+  fill(200, 400);
+  const second = app.flushStates(); // only 50 left
+  await Promise.all([first, second]);
+  assert.equal(gladys.fake.states.length, 250);
+  assert.equal(app.backlog.size, 150);
+  app.stop();
+});
+
+test('a station first read without a time still gets the REST and realtime values', async () => {
+  const { gladys, answers, app, timers, clock, ws } = await setup({ start: false });
+  const empty = () => {
+    const list = fixture('devices.json');
+    list[0].lastData = {};
+    return json(list);
+  };
+  // REST: an empty reading first, then a valid one.
+  answers.devices = empty;
+  await app.start(KEYS);
+  answers.devices = () => json(fixture('devices.json'));
+  clock.now += 300_000;
+  await timers.runIntervals();
+  await createAll(gladys);
+  assert.equal(gladys.fake.lastState(`${STATION}:tempf`), 18);
+
+  // Realtime: an empty REST reading first, then a valid push.
+  answers.devices = empty;
+  await app.start(KEYS);
+  const socket = ws.last();
+  socket.handshake();
+  const reading = { ...fixture('devices.json')[0].lastData, dateutc: clock.now, tempf: 68 };
+  socket.event('data', { ...reading, macAddress: '00:0E:C6:AA:BB:01' });
+  await flush();
+  assert.equal(gladys.fake.lastState(`${STATION}:tempf`), 20);
+  // A push without a valid time is ignored.
+  socket.event('data', { ...reading, tempf: 32, dateutc: 'soon', macAddress: '00:0E:C6:AA:BB:01' });
+  await flush();
+  assert.equal(gladys.fake.lastState(`${STATION}:tempf`), 20);
+});
+
 test('the test button: each station and its last reading, in both languages', async () => {
   const { gladys } = await setup({ config: { ...KEYS, public_stations: true } });
   const ack = await gladys.fake.action(ACTIONS.TEST);

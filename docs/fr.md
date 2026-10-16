@@ -51,8 +51,9 @@ Uniquement les stations publiques ? Laissez les deux clés vides et activez
 - **Unités** (métrique par défaut) : seules les températures changent, °C
   (métrique) ou °F (impérial). Le vent est toujours en km/h, les cumuls de
   pluie en mm, l'intensité en mm/h, la pluie des dernières 24 heures en mm
-  par jour et la pression en hPa : Gladys n'a ni inHg ni in/h, l'impérial se
-  limite donc aux °F. Un appareil garde l'unité de sa création : après un
+  par jour et la pression en hPa : Gladys n'accepte ni les mph pour ses
+  capteurs de vent ni les pouces pour ses capteurs de pluie (et n'a pas
+  d'inHg), l'impérial se limite donc aux °F. Un appareil garde l'unité de sa création : après un
   changement, ses valeurs restent envoyées dans cette unité ; supprimez-le
   et recréez-le pour la changer.
 - **Intervalle de lecture du compte** (5 minutes par défaut, de 1 à 60) : une

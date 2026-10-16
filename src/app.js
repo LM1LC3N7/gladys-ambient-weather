@@ -248,9 +248,11 @@ export class AmbientApp {
     const next = replace ? new Map() : new Map(this.own);
     for (const station of stations) {
       const known = this.own.get(station.id);
-      // A reading without a valid time never replaces a known one.
+      // A reading without a valid time never replaces a dated one; a known
+      // reading without a time (an empty lastData) is always replaced.
+      const tKnown = readingTime(known?.lastData);
       const keep =
-        known && !(readingTime(station.lastData) >= readingTime(known.lastData))
+        known && Number.isFinite(tKnown) && !(readingTime(station.lastData) >= tKnown)
           ? known.lastData
           : station.lastData;
       next.set(station.id, { ...station, lastData: keep });
@@ -309,7 +311,12 @@ export class AmbientApp {
       // read brings its name and its devices.
       return;
     }
-    if (!(readingTime(reading) >= readingTime(station.lastData))) {
+    const t = readingTime(reading);
+    if (!Number.isFinite(t)) {
+      return;
+    }
+    const tKnown = readingTime(station.lastData);
+    if (Number.isFinite(tKnown) && t < tKnown) {
       return;
     }
     const lastData = { ...reading };
@@ -523,10 +530,16 @@ export class AmbientApp {
     for (const state of batch) {
       this.backlog.delete(state.device_feature_external_id);
     }
+    // The batch is reserved in the budget BEFORE the await: a flush running
+    // meanwhile (a realtime push, a poll) sees the room already taken.
+    const entry = [this.now(), batch.length];
+    this.sentLog.push(entry);
     try {
       const result = await this.gladys.publishChangedStates(batch, { heartbeat: HEARTBEAT });
-      this.sentLog.push([this.now(), result?.count ?? batch.length]);
+      // Only what was really sent counts (unchanged values are skipped).
+      entry[1] = result?.count ?? batch.length;
     } catch (err) {
+      entry[1] = 0;
       this.logger.warn(`Publishing the states failed: ${err.message}`);
       // Sent again later, unless a newer value came in meanwhile.
       for (const state of batch) {
