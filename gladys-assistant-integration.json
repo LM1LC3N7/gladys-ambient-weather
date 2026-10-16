@@ -1,177 +1,169 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Ambient Weather",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Unofficial connector: your Ambient Weather stations and public ones nearby.",
+    "fr": "Connecteur non officiel : vos stations Ambient Weather et les stations publiques proches."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-ambient-weather:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-ambient-weather/main/cover.png",
+  "categories": ["environment"],
+  "transports": ["cloud"],
+  "location": true,
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": { "en": "Ambient Weather in Gladys", "fr": "Ambient Weather dans Gladys" },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Unofficial connector, not affiliated with Ambient Weather. It brings the sensors of your Ambient Weather stations into Gladys (temperature, humidity, pressure, wind and gusts, rain rate and totals, UV, solar radiation, indoor and extra sensors, soil probes, low batteries), read through the official API every few minutes and pushed in realtime in between. Create the two keys on ambientweather.net (Account → API Keys): an API key and an Application key. Optionally, it also offers the public stations of the Ambient Weather Network around your houses, without any account.",
+        "fr": "Connecteur non officiel, sans lien avec Ambient Weather. Il amène dans Gladys les capteurs de vos stations Ambient Weather (température, humidité, pression, vent et rafales, intensité et cumuls de pluie, UV, rayonnement solaire, capteurs intérieurs et supplémentaires, sondes de sol, piles faibles), lus par l'API officielle toutes les quelques minutes et poussés en temps réel entre-temps. Créez les deux clés sur ambientweather.net (Account → API Keys) : une clé d'API et une clé d'application. En option, il propose aussi les stations publiques de l'Ambient Weather Network autour de vos maisons, sans aucun compte."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://ambientweather.net/account/keys",
+          "label": {
+            "en": "Your Ambient Weather API keys",
+            "fr": "Vos clés d'API Ambient Weather"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-ambient-weather/blob/main/docs/fr.md",
+          "label": { "en": "Guide (French)", "fr": "Guide (français)" }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-ambient-weather/blob/main/docs/en.md",
+          "label": { "en": "Guide (English)", "fr": "Guide (anglais)" }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
+      "key": "api_key",
+      "type": "secret",
+      "label": { "en": "API key", "fr": "Clé d'API" },
       "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+        "en": "The key of your account (Account → API Keys → Create API Key). Leave empty to use only the public stations.",
+        "fr": "La clé de votre compte (Account → API Keys → Create API Key). Laissez vide pour n'utiliser que les stations publiques."
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "required": false
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
+      "key": "application_key",
+      "type": "secret",
+      "label": { "en": "Application key", "fr": "Clé d'application" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "The developer key of the same page (Create Application Key, a short description is enough).",
+        "fr": "La clé développeur de la même page (Create Application Key, une courte description suffit)."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "required": false
     },
     {
-      "key": "unit",
+      "key": "units",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "label": { "en": "Units", "fr": "Unités" },
+      "description": {
+        "en": "Metric: °C, km/h, mm. Imperial: °F, mph, inches. The pressure is always in hPa and the rain rate in mm/h (Gladys has no inHg nor in/h). A device keeps the units it was created with.",
+        "fr": "Métrique : °C, km/h, mm. Impérial : °F, mph, pouces. La pression est toujours en hPa et l'intensité de pluie en mm/h (Gladys n'a ni inHg ni in/h). Un appareil garde les unités de sa création."
+      },
       "required": false,
-      "default": "celsius",
+      "default": "metric",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        { "value": "metric", "label": { "en": "Metric", "fr": "Métrique" } },
+        { "value": "imperial", "label": { "en": "Imperial", "fr": "Impérial" } }
       ]
     },
     {
-      "key": "poll_frequency",
+      "key": "poll_interval",
       "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "label": {
+        "en": "Account read interval (minutes)",
+        "fr": "Intervalle de lecture du compte (minutes)"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "How often the stations of the account are read through the API (one request each time). The realtime pushes come in between.",
+        "fr": "Fréquence de lecture des stations du compte par l'API (une requête à chaque fois). Les envois en temps réel arrivent entre-temps."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": 5,
+      "min": 1,
+      "max": 60
+    },
+    {
+      "key": "realtime",
+      "type": "boolean",
+      "label": { "en": "Realtime updates", "fr": "Mises à jour en temps réel" },
+      "description": {
+        "en": "Keeps a connection to the realtime API of Ambient Weather: every new reading of your stations arrives as soon as it is uploaded.",
+        "fr": "Garde une connexion à l'API temps réel d'Ambient Weather : chaque nouvelle mesure de vos stations arrive dès son envoi."
+      },
+      "required": false,
+      "default": true
+    },
+    {
+      "key": "public_section",
+      "type": "section",
+      "label": {
+        "en": "Public stations (Ambient Weather Network)",
+        "fr": "Stations publiques (Ambient Weather Network)"
+      },
+      "description": {
+        "en": "Offers in the Discovery tab the nearest public stations around each located house of Gladys, outdoor values only. The coordinates of the houses, rounded to about 1 km, are sent to Ambient Weather to find them. The public map service is not a documented API: it may change without notice.",
+        "fr": "Propose dans l'onglet Découverte les stations publiques les plus proches de chaque maison localisée de Gladys, valeurs extérieures uniquement. Les coordonnées des maisons, arrondies à 1 km environ, sont envoyées à Ambient Weather pour les trouver. Le service de la carte publique n'est pas une API documentée : il peut changer sans préavis."
+      }
+    },
+    {
+      "key": "public_stations",
+      "type": "boolean",
+      "label": { "en": "Public stations nearby", "fr": "Stations publiques à proximité" },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "public_radius_km",
+      "type": "number",
+      "label": { "en": "Search radius (km)", "fr": "Rayon de recherche (km)" },
+      "required": false,
+      "default": 10,
+      "min": 1,
+      "max": 50
+    },
+    {
+      "key": "public_max_stations",
+      "type": "number",
+      "label": {
+        "en": "Public stations offered per house",
+        "fr": "Stations publiques proposées par maison"
+      },
+      "required": false,
+      "default": 3,
+      "min": 1,
+      "max": 10
+    },
+    {
+      "key": "public_poll_interval",
+      "type": "number",
+      "label": {
+        "en": "Public stations read interval (minutes)",
+        "fr": "Intervalle de lecture des stations publiques (minutes)"
+      },
+      "required": false,
+      "default": 10,
+      "min": 5,
+      "max": 60
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "test_connection",
+      "timeout_seconds": 30,
+      "label": { "en": "Test Ambient Weather", "fr": "Tester Ambient Weather" },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
-      "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
-      ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+        "en": "Reads the stations of the account and the public stations nearby, and shows their last reading.",
+        "fr": "Lit les stations du compte et les stations publiques proches, et affiche leur dernière mesure."
+      }
     }
   ]
 }

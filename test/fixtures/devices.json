@@ -1,0 +1,71 @@
+[
+  {
+    "macAddress": "00:0E:C6:AA:BB:01",
+    "lastData": {
+      "dateutc": 1792174140000,
+      "tempinf": 71.2,
+      "battin": 1,
+      "humidityin": 45,
+      "baromrelin": 30.012,
+      "baromabsin": 29.873,
+      "tempf": 64.4,
+      "battout": 1,
+      "humidity": 58,
+      "winddir": 225,
+      "winddir_avg10m": 231,
+      "windspeedmph": 5.6,
+      "windspdmph_avg10m": 4.9,
+      "windgustmph": 8.1,
+      "maxdailygust": 15,
+      "hourlyrainin": 0.12,
+      "eventrainin": 0.35,
+      "dailyrainin": 0.31,
+      "weeklyrainin": 0.8,
+      "monthlyrainin": 1.97,
+      "yearlyrainin": 24.6,
+      "solarradiation": 412.5,
+      "uv": 4,
+      "temp1f": 59,
+      "humidity1": 71,
+      "batt1": 0,
+      "soiltemp1f": 55.4,
+      "soilhum1": 38,
+      "battsm1": "1",
+      "feelsLike": 64.4,
+      "dewPoint": 49.6,
+      "feelsLikein": 70.5,
+      "dewPointin": 48.9,
+      "lastRain": "2026-10-16T17:40:00.000Z",
+      "tz": "America/New_York",
+      "date": "2026-10-16T18:09:00.000Z"
+    },
+    "info": {
+      "name": "Backyard",
+      "location": "Home",
+      "coords": {
+        "coords": { "lat": 40.71, "lon": -74 },
+        "address": "",
+        "location": "New York",
+        "elevation": 10
+      }
+    }
+  },
+  {
+    "macAddress": "00:0E:C6:AA:BB:02",
+    "lastData": {
+      "dateutc": 1792159200000,
+      "tempf": 50.1,
+      "battout": "0",
+      "tz": "America/New_York",
+      "date": "2026-10-16T14:00:00.000Z"
+    },
+    "info": {
+      "name": "Cabin"
+    }
+  },
+  {
+    "macAddress": "not-a-mac",
+    "lastData": {},
+    "info": { "name": "Broken" }
+  }
+]

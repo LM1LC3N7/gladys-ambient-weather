@@ -1,45 +1,51 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// The configuration the user fills (manifest `config_schema`), normalized so
+// the rest of the code never deals with strings or `undefined`.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+import { UNIT_SYSTEMS } from './constants.js';
+
+// Defaults: they MUST match the `default` values of the manifest
+// (test/manifest.test.js checks it).
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  units: 'metric',
+  poll_interval: 5,
+  realtime: true,
+  public_stations: false,
+  public_radius_km: 10,
+  public_max_stations: 3,
+  public_poll_interval: 10,
 };
 
-/**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
- */
+const number = (value, fallback, min, max) => {
+  const n = Number(value);
+  return value !== '' && value !== null && value !== undefined && Number.isFinite(n)
+    ? Math.min(max, Math.max(min, Math.round(n)))
+    : fallback;
+};
+
+const flag = (value, fallback) =>
+  value === undefined || value === null || value === ''
+    ? fallback
+    : value === true || value === 'true';
+
+const key = (value) => String(value ?? '').trim();
+
 export function normalizeConfig(raw = {}) {
+  const units = String(raw.units ?? DEFAULT_CONFIG.units).toLowerCase();
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    apiKey: key(raw.api_key),
+    applicationKey: key(raw.application_key),
+    units: UNIT_SYSTEMS.includes(units) ? units : DEFAULT_CONFIG.units,
+    // A station uploads every minute at best: faster reads are useless.
+    pollMinutes: number(raw.poll_interval, DEFAULT_CONFIG.poll_interval, 1, 60),
+    realtime: flag(raw.realtime, DEFAULT_CONFIG.realtime),
+    publicStations: flag(raw.public_stations, DEFAULT_CONFIG.public_stations),
+    publicRadiusKm: number(raw.public_radius_km, DEFAULT_CONFIG.public_radius_km, 1, 50),
+    publicMaxStations: number(raw.public_max_stations, DEFAULT_CONFIG.public_max_stations, 1, 10),
+    publicPollMinutes: number(raw.public_poll_interval, DEFAULT_CONFIG.public_poll_interval, 5, 60),
   };
 }
+
+/** Both keys are needed for the stations of the account. */
+export const hasAccount = (config) => Boolean(config.apiKey && config.applicationKey);

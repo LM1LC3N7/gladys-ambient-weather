@@ -1,67 +1,126 @@
-# Template de démonstration
+# Ambient Weather
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+**Connecteur non officiel, sans lien avec Ambient Weather.** Il amène dans
+Gladys les capteurs de vos stations [Ambient Weather](https://ambientweather.net),
+lus par l'API officielle d'Ambient Weather (REST et temps réel). En option, il
+propose aussi les **stations publiques de l'Ambient Weather Network** autour
+de vos maisons, sans aucun compte.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+| Appareil dans Gladys      | Capteurs                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Station** (extérieur)   | température, humidité, pression relative et absolue, vitesse du vent, rafale, rafale maximale du jour, direction du vent (et leurs moyennes sur 10 minutes), intensité de pluie, pluie de l'épisode / du jour / sur 24 h / de la semaine / du mois / de l'année / totale, indice UV, rayonnement solaire, pile faible du capteur extérieur et du pluviomètre |
+| **Station – indoor**      | température et humidité intérieures, pile faible de la console                                                                                                                                                                                                                                                                                               |
+| **Station – sensor 1…10** | température et humidité de chaque capteur supplémentaire, pile faible                                                                                                                                                                                                                                                                                        |
+| **Station – soil 1…10**   | humidité et température du sol de chaque sonde de sol, pile faible                                                                                                                                                                                                                                                                                           |
+| **Station publique**      | la météo extérieure d'une station publique proche (ni pile, ni valeur intérieure)                                                                                                                                                                                                                                                                            |
+
+Une station ne reçoit que les capteurs qu'elle transmet : rien n'est créé
+pour un capteur que vous n'avez pas. Chaque groupe est un appareil à part :
+la console intérieure et le capteur extérieur peuvent aller dans des pièces
+différentes. Le rayonnement solaire est affiché en lux (W/m² ÷ 0,0079,
+l'approximation habituelle de la lumière du jour) : Gladys n'a pas d'unité
+W/m². Les noms des appareils et des capteurs sont en anglais ; renommez-les à
+la création si vous le souhaitez.
+
+## Installation
+
+1. Sur [ambientweather.net](https://ambientweather.net/account/keys), ouvrez
+   **Account → API Keys** et créez :
+   - une **clé d'API** (« API Key », la clé de votre compte),
+   - une **clé d'application** (« Application Key », la clé développeur ;
+     une courte description comme « Gladys » suffit).
+2. Installez l'intégration depuis le catalogue de Gladys (Gladys 5.1 ou plus
+   récent) et acceptez l'accès à la **position de vos maisons** (utilisée
+   uniquement pour les stations publiques, et seulement si vous les activez).
+3. Dans l'écran **Configuration**, collez les deux clés et enregistrez.
+4. Cliquez sur **Tester Ambient Weather** : le message liste vos stations et
+   leur dernière mesure.
+5. Ouvrez l'onglet **Découverte** et ajoutez les appareils voulus. Leurs
+   valeurs arrivent dès leur création.
+
+Uniquement les stations publiques ? Laissez les deux clés vides et activez
+**Stations publiques à proximité**.
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+- **Clé d'API**, **clé d'application** : toutes deux nécessaires pour les
+  stations de votre compte. Elles sont stockées comme secrets et jamais
+  écrites dans les journaux.
+- **Unités** (métrique par défaut) : métrique, c'est °C, km/h, mm ; impérial,
+  °F, mph, pouces. La pression est toujours en hPa et l'intensité de pluie en
+  mm/h : Gladys n'a ni inHg ni in/h. Un appareil garde les unités de sa
+  création : après un changement, ses valeurs restent envoyées dans ces
+  unités ; supprimez-le et recréez-le pour les changer.
+- **Intervalle de lecture du compte** (5 minutes par défaut, de 1 à 60) : une
+  requête à l'API à chaque fois.
+- **Mises à jour en temps réel** (activées par défaut) : une connexion à
+  l'API temps réel d'Ambient Weather, pour que chaque nouvelle mesure arrive
+  dès que la station l'envoie, entre deux lectures.
+- **Stations publiques à proximité** (désactivées par défaut), **rayon de
+  recherche** (10 km), **stations publiques proposées par maison** (3) et leur
+  **intervalle de lecture** (10 minutes, 5 au minimum).
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+## À quelle fréquence Ambient Weather est appelé
 
-## Actions
+- L'API autorise **1 requête par seconde par clé d'API** (et 3 par seconde
+  par clé d'application), et répond « 429 » au-delà. L'intégration n'envoie
+  jamais deux requêtes à moins de 1,1 s d'intervalle, quelle qu'en soit
+  l'origine (lecture périodique, onglet Découverte, bouton de test).
+- Le compte : une requête à chaque « intervalle de lecture du compte », plus
+  une au démarrage et à chaque test.
+- Le temps réel : une connexion, gardée ouverte, rétablie après 5 s, puis
+  10 s, 20 s… jusqu'à 5 minutes.
+- Les stations publiques : une requête par maison localisée à chaque
+  « intervalle de lecture ».
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Seules les valeurs qui changent sont envoyées à Gladys (plus chaque valeur
+inchangée toutes les 30 minutes), bien en dessous des 300 états par minute
+qu'accepte Gladys. Une mesure de plus d'une heure (station hors ligne) n'est
+pas envoyée.
 
-## Scènes
+## Stations publiques
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+Les stations publiques sont celles que leurs propriétaires ont choisi de
+partager sur la carte de l'Ambient Weather Network. Elles sont cherchées dans
+un carré autour de chaque maison localisée (Paramètres → Maisons), puis
+filtrées : dans le rayon, en extérieur, une mesure de moins d'une heure, une
+température, aucune de vos propres stations. Les plus proches sont proposées
+dans l'onglet Découverte ; celles que vous créez gardent leurs valeurs tant
+qu'elles restent dans le rayon.
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
-
-## Tableau de bord
-
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Le service de la carte publique **n'est pas une API documentée** : Ambient
+Weather peut le modifier sans préavis. C'est celui qu'utilise la carte
+d'ambientweather.net, et celui que lisent aioambient et l'intégration
+« Ambient Weather Network » de Home Assistant.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Ambient Weather a refusé les clés »** : vérifiez les deux clés sur la
+  page API Keys (une clé d'application n'est pas une clé d'API).
+- **« Ambient Weather demande de ralentir (429) »** : un autre outil utilise
+  la même clé d'API au même moment ; la lecture suivante réessaie d'elle-même.
+- **Un appareil n'a pas de valeur** : la station n'a rien envoyé depuis plus
+  d'une heure, ou l'API ne transmet pas ce capteur.
+- **Aucune station publique** : la maison doit avoir une position dans
+  Gladys, et le réseau est clairsemé hors d'Amérique du Nord : essayez un
+  rayon plus grand.
+- Journaux : le niveau se règle avec la variable `LOG_LEVEL`.
+
+## Vie privée
+
+Stations publiques désactivées (par défaut), aucune position ne quitte
+Gladys. Activées, les coordonnées de chaque maison, arrondies à 2 décimales
+(1 km environ), sont envoyées à Ambient Weather comme zone de recherche. Les
+clés ne partent que vers Ambient Weather, en HTTPS.
+
+## Crédits
+
+Construit d'après la
+[documentation officielle de l'API Ambient Weather](https://ambientweather.docs.apiary.io/)
+et [aioambient](https://github.com/bachya/aioambient) (MIT, Aaron Bach), le
+client Python qu'utilise Home Assistant : points d'accès, noms des champs,
+limites de débit, protocole temps réel, stations publiques. Ambient Weather
+est une marque de son propriétaire ; ce connecteur est gratuit et non
+officiel.
