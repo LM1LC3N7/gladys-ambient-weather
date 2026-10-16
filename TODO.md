@@ -24,10 +24,6 @@
       checked once on 2026-10-16 (200, `{ data: [...] }`, no account, about
       10 KB per station). Undocumented: watch for changes, and whether it
       accepts `$select` to make the answer lighter.
-- [ ] **Open decision**: plain `mm` is NOT in the core's list for
-      `precipitation-sensor` (only mm/h, mm/day, mV, checked on 2026-10-16),
-      yet the rain totals (event, today, week, month, year, total) use it.
-      Choose between keeping `mm`, `mm/day` for "today", or another category.
 - [ ] Gladys shows `angle-sensor` (wind direction, absent from the core's
       unit list) and the 24-hour rain in `millimeter-per-day` well.
 
@@ -46,16 +42,21 @@
 - **Feels-like and dew point left out**: Ambient computes them, and as
   `temperature-sensor` features they would skew the room temperature of
   Gladys.
+- **Rain totals stay in plain `mm`** on `precipitation-sensor` although the
+  core lists only mm/h, mm/day and mV for that category: the core's own
+  Netatmo integration does the same
+  (`buildFeatureRain(..., DEVICE_FEATURE_UNITS.MM)`); coordinator decision,
+  2026-10-16.
 - **Units (review decision)**: the unit system only changes the
   temperatures (°C or °F). Wind is always in km/h, rain totals in mm, the
   rain rate in mm/h, `24hourrainin` in mm per day (a daily amount), pressure
   in hPa. The reason: the core (`DEVICE_FEATURE_UNITS_BY_CATEGORY` in
   `server/utils/constants.js`) accepts only m/s and km/h for `speed-sensor`
-  and only mm/h and mm/day for `precipitation-sensor` (no mph, no inches),
-  and has no inHg; one unit per quantity also keeps charts and scene
-  thresholds consistent. Solar radiation in lux (no W/m²,
-  factor 1/0.0079 ≈ 126.6 as Home Assistant). Humidity and soil moisture are
-  decimal sensors.
+  and only mm/h and mm/day for `precipitation-sensor` (no mph, no inches;
+  plain `mm` kept for the totals, see above), and has no inHg; one unit per
+  quantity also keeps charts and scene thresholds consistent. Solar
+  radiation in lux (no W/m², factor 1/0.0079 ≈ 126.6 as Home Assistant).
+  Humidity and soil moisture are decimal sensors.
 - **States in the created unit**: a feature keeps the unit it was created
   with; switching the unit system never sends °C into a °F feature.
 - **Public stations off by default**: turning them on sends the houses'
