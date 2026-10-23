@@ -1,6 +1,6 @@
 {
   "name": "gladys-ambient-weather",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Ambient Weather stations for Gladys Assistant: the sensors of your stations (official REST and realtime API) and the public stations of the Ambient Weather Network nearby.",
   "type": "module",
