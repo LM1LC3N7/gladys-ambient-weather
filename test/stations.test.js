@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { sensorsOf } from '../src/sensors.js';
+import { GROUPS, sensorsOf } from '../src/sensors.js';
 import {
   boxAround,
   devicesOf,
@@ -17,6 +17,7 @@ import {
   statesOf,
 } from '../src/stations.js';
 import { FIXTURE_NOW, fixture } from './helpers/fakes.js';
+import { assertCoreDevice } from './helpers/coreFeature.js';
 
 const [backyard, cabin] = stationsOf(fixture('devices.json'));
 const HOME = { latitude: 40.71, longitude: -74 };
@@ -190,4 +191,23 @@ test('the states follow the unit each feature was created with', async () => {
   ]);
   // Without a filter, every sensor of the reading.
   assert.equal(statesOf(gladys, backyard, { units: 'metric' }).length, 28);
+});
+
+test('every feature of every group, units and kind of station, has a numeric min and max and the core fields', () => {
+  const gladys = createFakeGladys({ selector: 'ambient-weather' });
+  const lastData = Object.fromEntries(
+    GROUPS.flatMap((group) => group.sensors.map(([field]) => [field, 1])),
+  );
+  const all = GROUPS.reduce((n, group) => n + group.sensors.length, 0);
+  for (const isPublic of [false, true]) {
+    for (const units of ['metric', 'imperial']) {
+      const station = { id: 'aabbccddeeff', name: 'Backyard', isPublic, lastData };
+      let features = 0;
+      for (const device of devicesOf(gladys, station, { units })) {
+        features += assertCoreDevice(device, `${isPublic ? 'public' : 'own'}/${units}`);
+      }
+      // A public station shows its outdoor sensors only, without the batteries.
+      assert.equal(features, isPublic ? GROUPS[0].sensors.length - 2 : all);
+    }
+  }
 });

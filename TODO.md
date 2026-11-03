@@ -29,6 +29,14 @@
 
 ## Decisions
 
+- **SDK `^0.16.0`** (2026-11-03, migration wave 6): it adds the ai, tts and
+  music types; no effect here (`poll_frequency` unused, the devices carry
+  `should_poll: false`). Every feature already had a numeric `min` and `max`;
+  a test in `test/stations.test.js` now checks every sensor of every group,
+  in both unit systems, own and public stations, against the core model
+  (`test/helpers/coreFeature.js`). `npm test` runs with
+  `--test-timeout=60000`. `keywords`, `countries` and
+  `gladys_version >= 5.3.0` wait until Gladys 5.3 is widespread.
 - **Device type, not weather type**: a station is a set of sensors that
   belong in rooms, history and scenes; the weather providers of Gladys
   (forecasts) are another integration's job.

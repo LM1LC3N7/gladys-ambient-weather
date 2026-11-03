@@ -21,7 +21,7 @@ ambient-api documentation and aioambient (MIT, bachya), credited, not copied.
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
+npm test                                  # node --test --test-timeout=60000
 node --test test/app.test.js              # one file
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
@@ -75,6 +75,11 @@ test/helpers/      fake fetch, fake timers, fake WebSocket; Gladys is the SDK's 
 
 ## Rules
 
+- **Features follow the core model.** Every feature has a numeric `min` and
+  `max`, `read_only` and `has_feedback`: Gladys answers HTTP 422 otherwise,
+  and the SDK's fake Gladys does not check it (`test/helpers/coreFeature.js`
+  does). Devices carry `should_poll: false` (Gladys 5.3 polls a device with
+  `poll_frequency` unless it says so).
 - **External ids are forever**: `station:<mac>[-indoor|-chN|-soilN]` and
   `public:<mac>`, feature key = the Ambient field name (`tempf`,
   `dailyrainin`). Never a label, never renamed. Same for the manifest keys.
