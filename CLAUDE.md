@@ -9,7 +9,7 @@ A Gladys Assistant **external integration** of type `device`: a Node.js
 service (Node 22+, ESM, no build step) in its own sandboxed Docker container,
 talking to Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js)
-(v0.15), its only runtime dependency. It publishes the sensors of
+(v0.16), its only runtime dependency. It publishes the sensors of
 **Ambient Weather** stations: those of the user's account (official REST API
 plus the official realtime Socket.IO API, an API key and an Application key)
 and, as an option, the public stations of the Ambient Weather Network around
